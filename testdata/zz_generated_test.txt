@@ -1,3 +1,0 @@
-Extracted values types: memcached Groups: batch.io 
-Extracted values types: something Groups: batch.io 
-Extracted values types: test Groups: art 
