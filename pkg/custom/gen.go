@@ -72,6 +72,13 @@ func GenerateHelper(ctx *genall.GenerationContext) ([]result, error) {
 			}
 			out = append(out, r)
 
+			// copy when nabled for all types and not disabled, or enabled
+			// specifically on this type
+			// Force `allTypes` to false for now. It checks if marker is enabled on package itself
+			if !enabledOnType(false, info) {
+				return
+			}
+
 			configCtx := &configMethodWriter{
 				importsList: imports,
 				pkg:         *root,
@@ -257,4 +264,21 @@ func (l *importsList) NeedImport(importPath string) string {
 	l.byPath[importPath] = alias
 	l.byAlias[alias] = importPath
 	return alias
+}
+
+func enabledOnType(allTypes bool, info *markers.TypeInfo) bool {
+	if typeMarker := info.Markers.Get(RuleDefinition.Name); typeMarker != nil {
+		fmt.Println(typeMarker)
+		return typeMarker.(bool)
+	}
+	return allTypes || genObjectInterface(info)
+}
+
+func genObjectInterface(info *markers.TypeInfo) bool {
+	objectEnabled := info.Markers.Get(RuleDefinition.Name)
+	if objectEnabled != nil {
+		return objectEnabled.(bool)
+	}
+
+	return false
 }
