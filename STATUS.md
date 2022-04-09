@@ -1,0 +1,1 @@
+- Fix the imports section for generated files which gives aliases for all.
