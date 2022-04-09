@@ -13,7 +13,7 @@ import (
 
 func main() {
 
-	err := os.Chdir("./testdata")
+	err := os.Chdir("./testdata/v1")
 	if err != nil {
 		log.Fatalf(err.Error())
 		os.Exit(1)

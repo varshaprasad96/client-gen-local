@@ -6,12 +6,9 @@ import (
 	"go/format"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"sigs.k8s.io/controller-tools/pkg/genall"
 	"sigs.k8s.io/controller-tools/pkg/loader"
@@ -72,18 +69,17 @@ func GenerateHelper(ctx *genall.GenerationContext) ([]result, error) {
 			}
 			out = append(out, r)
 
-			// copy when nabled for all types and not disabled, or enabled
-			// specifically on this type
-			// Force `allTypes` to false for now. It checks if marker is enabled on package itself
-			if !enabledOnType(false, info) {
-				return
-			}
-
 			configCtx := &configMethodWriter{
 				importsList: imports,
 				pkg:         *root,
 				codeWriter:  &codeWriter{out: outContent},
 			}
+
+			// if not enabled for this type, skip
+			if !isEnabledForMethod(info) {
+				return
+			}
+
 			configCtx.GenerateConfigMethod(root, info)
 
 			outBytes := outContent.Bytes()
@@ -199,86 +195,9 @@ import (
 	}
 }
 
-// ImportSpecs returns a string form of each import spec
-// (i.e. `alias "path/to/import").  Aliases are only present
-// when they don't match the package name.
-func (l *importsList) ImportSpecs() []string {
-	res := make([]string, 0, len(l.byPath))
-	for importPath, alias := range l.byPath {
-		pkg := l.pkg.Imports()[importPath]
-		if pkg != nil && pkg.Name == alias {
-			// don't print if alias is the same as package name
-			// (we've already taken care of duplicates).
-			res = append(res, fmt.Sprintf("%q", importPath))
-		} else {
-			res = append(res, fmt.Sprintf("%s %q", alias, importPath))
-		}
-	}
-	return res
-}
-
-// NeedImport marks that the given package is needed in the list of imports,
-// returning the ident (import alias) that should be used to reference the package.
-func (l *importsList) NeedImport(importPath string) string {
-	// we get an actual path from Package, which might include venddored
-	// packages if running on a package in vendor.
-	if ind := strings.LastIndex(importPath, "/vendor/"); ind != -1 {
-		importPath = importPath[ind+8: /* len("/vendor/") */]
-	}
-
-	// check to see if we've already assigned an alias, and just return that.
-	alias, exists := l.byPath[importPath]
-	if exists {
-		return alias
-	}
-
-	// otherwise, calculate an import alias by joining path parts till we get something unique
-	restPath, nextWord := path.Split(importPath)
-
-	for otherPath, exists := "", true; exists && otherPath != importPath; otherPath, exists = l.byAlias[alias] {
-		if restPath == "" {
-			// do something else to disambiguate if we're run out of parts and
-			// still have duplicates, somehow
-			alias += "x"
-		}
-
-		// can't have a first digit, per Go identifier rules, so just skip them
-		for firstRune, runeLen := utf8.DecodeRuneInString(nextWord); unicode.IsDigit(firstRune); firstRune, runeLen = utf8.DecodeRuneInString(nextWord) {
-			nextWord = nextWord[runeLen:]
-		}
-
-		// make a valid identifier by replacing "bad" characters with underscores
-		nextWord = strings.Map(func(r rune) rune {
-			if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
-				return r
-			}
-			return '_'
-		}, nextWord)
-
-		alias = nextWord + alias
-		if len(restPath) > 0 {
-			restPath, nextWord = path.Split(restPath[:len(restPath)-1] /* chop off final slash */)
-		}
-	}
-
-	l.byPath[importPath] = alias
-	l.byAlias[alias] = importPath
-	return alias
-}
-
-func enabledOnType(allTypes bool, info *markers.TypeInfo) bool {
-	if typeMarker := info.Markers.Get(RuleDefinition.Name); typeMarker != nil {
-		fmt.Println(typeMarker)
-		return typeMarker.(bool)
-	}
-	return allTypes || genObjectInterface(info)
-}
-
-func genObjectInterface(info *markers.TypeInfo) bool {
-	objectEnabled := info.Markers.Get(RuleDefinition.Name)
-	if objectEnabled != nil {
-		return objectEnabled.(bool)
-	}
-
-	return false
+// isEnabledForMethod verifies if the genclient marker is enabled for
+// this type or not
+func isEnabledForMethod(info *markers.TypeInfo) bool {
+	enabled := info.Markers.Get(RuleDefinition.Name)
+	return enabled != nil
 }

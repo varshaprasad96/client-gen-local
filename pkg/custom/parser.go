@@ -12,43 +12,12 @@ import (
 
 var (
 	// RuleDefinition is a marker for defining rules
-	RuleDefinition = markers.Must(markers.MakeDefinition("genclient", markers.DescribesType, Rule{}))
+	RuleDefinition = markers.Must(markers.MakeDefinition("genclient", markers.DescribesType, placeholder{}))
 )
 
-type Rule struct {
-	// Types defines a test type
-	Types []string `marker:",optional"`
-	// Groups specifies the API groups that this rule encompasses.
-	Groups []string `marker:",optional"`
-	// Resources specifies the API resources that this rule encompasses.
-	Resources []string `marker:",optional"`
-	// ResourceNames specifies the names of the API resources that this rule encompasses.
-	//
-	// Create requests cannot be restricted by resourcename, as the object's name
-	// is not known at authorization time.
-	ResourceNames []string `marker:",optional"`
-	// Verbs specifies the (lowercase) kubernetes API verbs that this rule encompasses.
-	Verbs []string `marker:",optional"`
-	// URL specifies the non-resource URLs that this rule encompasses.
-	URLs []string `marker:"urls,optional"`
-	// Namespace specifies the scope of the Rule.
-	// If not set, the Rule belongs to the generated ClusterRole.
-	// If set, the Rule belongs to a Role, whose namespace is specified by this field.
-	Namespace string `marker:",optional"`
-}
-
-// ruleKey represents the resources and non-resources a Rule applies.
-type ruleKey struct {
-	Types         string
-	Groups        string
-	Resources     string
-	ResourceNames string
-	URLs          string
-}
-
-func (key ruleKey) String() string {
-	return fmt.Sprintf("%s + %s + %s + %s + %s", key.Types, key.Groups, key.Resources, key.ResourceNames, key.URLs)
-}
+// Assigning marker's output to a placeholder struct, to verify to
+// typecast the result and make sure if it exists for the type.
+type placeholder struct{}
 
 type codeWriter struct {
 	out io.Writer
@@ -57,6 +26,11 @@ type codeWriter struct {
 // Line writes a single line.
 func (c *codeWriter) Line(line string) {
 	fmt.Fprintln(c.out, line)
+}
+
+// Linef writes a single line with formatting (as per fmt.Sprintf).
+func (c *codeWriter) Linef(line string, args ...interface{}) {
+	fmt.Fprintf(c.out, line+"\n", args...)
 }
 
 type configMethodWriter struct {
@@ -71,12 +45,13 @@ func (c *configMethodWriter) GenerateConfigMethod(root *loader.Package, info *ma
 		root.AddError(loader.ErrFromNode(fmt.Errorf("unknown type: %s", info.Name), info.RawSpec))
 	}
 
+	// Flaky condition. We can remove it because of isEnabledMethod(), but keeping this as a double check.
 	if strings.HasSuffix(typeInfo.String(), "Status") || strings.HasSuffix(typeInfo.String(), "Spec") {
 		return
 	}
 
 	c.Line("// DONOT EDIT!!")
-	c.Line(newClientsetForConfigTemplate)
+	c.Linef(newClientsetForConfigTemplate, (&namingInfo{typeInfo: typeInfo}).Syntax(root, c.importsList))
 
 	// Add the imports
 	importsList := []string{"k8s.io/client-go/kubernetes", "github.com/kcp-dev/kcp-client-wrappers/kcp", "k8s.io/client-go/rest"}
