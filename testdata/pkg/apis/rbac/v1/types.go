@@ -54,3 +54,32 @@ type PolicyRule struct {
 	// +optional
 	NonResourceURLs []string `json:"nonResourceURLs,omitempty" protobuf:"bytes,5,rep,name=nonResourceURLs"`
 }
+
+// +genclient
+// ClusterRoleBinding references a ClusterRole, but not contain it.  It can reference a ClusterRole in the global namespace,
+// and adds who information via Subject.
+type ClusterRoleBinding struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Subjects holds references to the objects the role applies to.
+	// +optional
+	Subjects []Subject `json:"subjects,omitempty" protobuf:"bytes,2,rep,name=subjects"`
+
+	// RoleRef can only reference a ClusterRole in the global namespace.
+	// If the RoleRef cannot be resolved, the Authorizer must return an error.
+	RoleRef RoleRef `json:"roleRef" protobuf:"bytes,3,opt,name=roleRef"`
+}
+
+// RoleRef contains information that points to the role being used
+// +structType=atomic
+type RoleRef struct {
+	// APIGroup is the group for the resource being referenced
+	APIGroup string `json:"apiGroup" protobuf:"bytes,1,opt,name=apiGroup"`
+	// Kind is the type of resource being referenced
+	Kind string `json:"kind" protobuf:"bytes,2,opt,name=kind"`
+	// Name is the name of resource being referenced
+	Name string `json:"name" protobuf:"bytes,3,opt,name=name"`
+}

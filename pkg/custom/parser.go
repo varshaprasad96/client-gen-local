@@ -34,16 +34,11 @@ func (c *codeWriter) Linef(line string, args ...interface{}) {
 	fmt.Fprintf(c.out, line+"\n", args...)
 }
 
-type configMethodWriter struct {
-	*importsList
-	pkg loader.Package
-	*codeWriter
-}
-
 type api struct {
-	Name    string
-	Version string
-	PkgName string
+	Name       string
+	Version    string
+	PkgName    string
+	codeWriter *codeWriter
 
 	PkgNameUpperFirst string
 	VersionUpperFirst string
@@ -56,14 +51,13 @@ type packages struct {
 	Name              string
 	APIPath           string
 	ClientPath        string
-	Api               *api
 	NameUpperFirst    string
 	VersionUpperFirst string
 	Version           string
 	codeWriter        *codeWriter
 }
 
-func NewPackage(root *loader.Package, apiPath, clientPath, version, group string, cocodeWriter *codeWriter) error {
+func NewPackage(root *loader.Package, apiPath, clientPath, version, group string, cocodeWriter *codeWriter) (*packages, error) {
 	p := &packages{
 		Name:       group,
 		APIPath:    apiPath,
@@ -71,52 +65,45 @@ func NewPackage(root *loader.Package, apiPath, clientPath, version, group string
 		ClientPath: clientPath,
 		codeWriter: cocodeWriter,
 	}
+	p.setCased()
+	return p, nil
 }
 
-func NewAPI(root *loader.Package, info *markers.TypeInfo, apiPath, clientPath, version, group string, cocodeWriter *codeWriter) (*packages, error) {
+func (p *packages) setCased() {
+	p.NameUpperFirst = upperFirst(p.Name)
+	p.VersionUpperFirst = upperFirst(p.Version)
+}
+
+func NewAPI(root *loader.Package, info *markers.TypeInfo, version, group string, cocodeWriter *codeWriter) (*api, error) {
 	typeInfo := root.TypesInfo.TypeOf(info.RawSpec.Name)
 	if typeInfo == types.Typ[types.Invalid] {
 		return nil, fmt.Errorf("unknown type: %s", info.Name)
 	}
 
 	api := &api{
-		Name:    info.RawSpec.Name.Name,
-		Version: version,
-		PkgName: group,
-	}
-
-	p := &packages{
-		Name:       group,
-		APIPath:    apiPath,
+		Name:       info.RawSpec.Name.Name,
 		Version:    version,
-		ClientPath: clientPath,
-		Api:        api,
+		PkgName:    group,
 		codeWriter: cocodeWriter,
 	}
 
-	p.setCased()
-	return p, nil
+	api.setCased()
+	return api, nil
 
 }
 
-func (p *packages) writeMethods() error {
+func (a *api) writeMethods() error {
 	templ, err := template.New("wrapper").Parse(wrapperTempl)
 	if err != nil {
 		return err
 	}
 
-	err = templ.Execute(p.codeWriter.out, p)
+	err = templ.Execute(a.codeWriter.out, a)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (p *packages) setCased() {
-	p.NameUpperFirst = upperFirst(p.Name)
-	p.VersionUpperFirst = upperFirst(p.Version)
-	p.Api.setCased()
 }
 
 func (a *api) setCased() {
@@ -125,7 +112,7 @@ func (a *api) setCased() {
 	a.NameLowerFirst = lowerFirst(a.Name)
 }
 
-func (p *packages) writeCommonContent(out io.Writer) error {
+func (p *packages) writeCommonContent() error {
 	templ, err := template.New("wrapper").Parse(commonTempl)
 	if err != nil {
 		return err
@@ -146,52 +133,3 @@ func lowerFirst(s string) string {
 func upperFirst(s string) string {
 	return strings.ToUpper(string(s[0])) + s[1:]
 }
-
-var newClientsetForConfigTemplate = `
-// NewForConfig creates a new Clientset for the given config.
-// If config's RateLimiter is not set and QPS and Burst are acceptable, 
-// NewForConfig will generate a rate-limiter in configShallowCopy.
-// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
-// where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(c *rest.Config) (*ClusterClient, error) {
-	client, err := rest.HTTPClientFor(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating HTTP client: %w", err)
-	}
-
-	clusterRoundTripper := kcp.NewClusterRoundTripper(client.Transport)
-	client.Transport = clusterRoundTripper
-
-	delegate, err := kubernetes.NewForConfigAndClient(config, client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating delegate clientset: %w", err)
-	}
-
-	return &ClusterClient{
-		delegate: delegate,
-	}, nil
-
-}
-`
-
-var clusterClientDef = `
-type ClusterClient struct {
-	delegate kubernetes.Interface
-}
-`
-
-var clusterMethod = `
-func (c *ClusterClient) Cluster(cluster string) kubernetes.Interface {
-	return &wrappedInterface{
-		cluster:  cluster,
-		delegate: c.delegate,
-	}
-}
-`
-
-var wrappedInterface = `
-type wrappedInterface struct {
-	cluster  string
-	delegate kubernetes.Interface
-}
-`

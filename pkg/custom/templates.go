@@ -57,30 +57,29 @@ func (w *wrapped{{.NameUpperFirst}}{{.VersionUpperFirst}}) RESTClient() rest.Int
 	//TODO
 	panic("no")
 }
-
 `
 
 const wrapperTempl = `
-func (w *wrapped{{.Api.PkgNameUpperFirst}}{{.Api.VersionUpperFirst}}) {{.Api.Name}}s() {{.Api.PkgName}}{{.Api.Version}}.{{.Api.Name}}Interface {
-	return &wrapped{{.Api.Name}}{
+func (w *wrapped{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}) {{.Name}}s() {{.PkgName}}{{.Version}}.{{.Name}}Interface {
+	return &wrapped{{.Name}}{
 		cluster:  w.cluster,
-		delegate: w.delegate.{{.Api.Name}}s(),
+		delegate: w.delegate.{{.Name}}s(),
 	}
 }
 
-type wrapped{{.Api.Name}} struct {
+type wrapped{{.Name}} struct {
 	cluster  string
-	delegate {{.Api.PkgName}}.{{.Api.Name}}Interface
+	delegate {{.PkgName}}.{{.Name}}Interface
 }
 
-func (w *wrappedInterface) {{.Api.PkgNameUpperFirst}}{{.Api.VersionUpperFirst}}() {{.Api.PkgName}}{{.Api.Version}}.{{.Api.PkgNameUpperFirst}}{{.Api.VersionUpperFirst}}Interface {
-	return &wrapped{{.Api.PkgNameUpperFirst}}{{.Api.VersionUpperFirst}}{
+func (w *wrappedInterface) {{.PkgNameUpperFirst}}{{.VersionUpperFirst}}() {{.PkgName}}{{.Version}}.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}Interface {
+	return &wrapped{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}{
 		cluster:  w.cluster,
-		delegate: w.delegate.{{.Api.PkgNameUpperFirst}}{{.Api.VersionUpperFirst}}(),
+		delegate: w.delegate.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}(),
 	}
 }
 
-func (w *wrapped{{.Api.Name}}) checkCluster(ctx context.Context) (context.Context, error) {
+func (w *wrapped{{.Name}}) checkCluster(ctx context.Context) (context.Context, error) {
 	ctxCluster, ok := kcp.ClusterFromContext(ctx)
 	if !ok {
 		return kcp.WithCluster(ctx, w.cluster), nil
@@ -90,23 +89,23 @@ func (w *wrapped{{.Api.Name}}) checkCluster(ctx context.Context) (context.Contex
 	return ctx, nil
 }
 
-func (w *wrapped{{.Api.Name}}) Create(ctx context.Context, {{.Api.NameLowerFirst}} *{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}, opts metav1.CreateOptions) (*{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}, error) {
+func (w *wrapped{{.Name}}) Create(ctx context.Context, {{.NameLowerFirst}} *{{.PkgName}}api{{.Version}}.{{.Name}}, opts metav1.CreateOptions) (*{{.PkgName}}api{{.Version}}.{{.Name}}, error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return w.delegate.Create(ctx, {{.Api.NameLowerFirst}}}, opts)
+	return w.delegate.Create(ctx, {{.NameLowerFirst}}}, opts)
 }
 
-func (w *wrapped{{.Api.Name}}) Update(ctx context.Context, {{.Api.NameLowerFirst}}} *{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}, opts metav1.UpdateOptions) (*{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}, error) {
+func (w *wrapped{{.Name}}) Update(ctx context.Context, {{.NameLowerFirst}}} *{{.PkgName}}api{{.Version}}.{{.Name}}, opts metav1.UpdateOptions) (*{{.PkgName}}api{{.Version}}.{{.Name}}, error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return w.delegate.Update(ctx, {{.Api.NameLowerFirst}}}, opts)
+	return w.delegate.Update(ctx, {{.NameLowerFirst}}}, opts)
 }
 
-func (w *wrapped{{.Api.Name}}) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
+func (w *wrapped{{.Name}}) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
@@ -114,7 +113,7 @@ func (w *wrapped{{.Api.Name}}) Delete(ctx context.Context, name string, opts met
 	return w.delegate.Delete(ctx, name, opts)
 }
 
-func (w *wrapped{{.Api.Name}}) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+func (w *wrapped{{.Name}}) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
@@ -122,7 +121,7 @@ func (w *wrapped{{.Api.Name}}) DeleteCollection(ctx context.Context, opts metav1
 	return w.delegate.Delete(ctx, opts, listOpts)
 }
 
-func (w *wrapped{{.Api.Name}}) Get(ctx context.Context, name string, opts metav1.GetOptions) (*{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}, error) {
+func (w *wrapped{{.Name}}) Get(ctx context.Context, name string, opts metav1.GetOptions) (*{{.PkgName}}api{{.Version}}.{{.Name}}, error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
@@ -130,7 +129,7 @@ func (w *wrapped{{.Api.Name}}) Get(ctx context.Context, name string, opts metav1
 	return w.delegate.Get(ctx, opts, listOpts)
 }
 
-func (w *wrapped{{.Api.Name}}) List(ctx context.Context, opts metav1.ListOptions) (*{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}List, error) {
+func (w *wrapped{{.Name}}) List(ctx context.Context, opts metav1.ListOptions) (*{{.PkgName}}api{{.Version}}.{{.Name}}List, error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
@@ -138,7 +137,7 @@ func (w *wrapped{{.Api.Name}}) List(ctx context.Context, opts metav1.ListOptions
 	return w.delegate.List(ctx, opts)
 }
 
-func (w *wrapped{{.Api.Name}}) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+func (w *wrapped{{.Name}}) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
@@ -146,7 +145,7 @@ func (w *wrapped{{.Api.Name}}) Watch(ctx context.Context, opts metav1.ListOption
 	return w.delegate.Watch(ctx, opts)
 }
 
-func (w *wrapped{{.Api.Name}}) Patch(ctx context.Context, name string, pt apiTypes.PatchapiType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *{{.Api.PkgName}}api{{.Api.Version}}.{{.Api.Name}}, err error) {
+func (w *wrapped{{.Name}}) Patch(ctx context.Context, name string, pt apiTypes.PatchapiType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *{{.PkgName}}api{{.Version}}.{{.Name}}, err error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err

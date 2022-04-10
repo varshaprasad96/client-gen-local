@@ -4,35 +4,6 @@
 
 package v1
 
-import (
-
-)
-
-
-// NewForConfig creates a new Clientset for the given config.
-// If config's RateLimiter is not set and QPS and Burst are acceptable, 
-// NewForConfig will generate a rate-limiter in configShallowCopy.
-// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
-// where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(c *rest.Config) (*ClusterClient, error) {
-	client, err := rest.HTTPClientFor(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating HTTP client: %!w(MISSING)", err)
-	}
-
-	clusterRoundTripper := kcp.NewClusterRoundTripper(client.Transport)
-	client.Transport = clusterRoundTripper
-
-	delegate, err := kubernetes.NewForConfigAndClient(config, client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating delegate clientset: %!w(MISSING)", err)
-	}
-
-	return &ClusterClient{
-		delegate: delegate,
-	}, nil
-
-}
 
 import (
 	rbacapiv1 "github.com/varshaprasad96/client-gen/testdata/pkg/apis/rbac/v1"
@@ -177,6 +148,99 @@ func (w *wrappedClusterRole) Watch(ctx context.Context, opts metav1.ListOptions)
 }
 
 func (w *wrappedClusterRole) Patch(ctx context.Context, name string, pt apiTypes.PatchapiType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *rbacapiv1.ClusterRole, err error) {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Patch(ctx, name, pt, data, opts, subresources)
+}
+
+func (w *wrappedRbacV1) ClusterRoleBindings() rbacv1.ClusterRoleBindingInterface {
+	return &wrappedClusterRoleBinding{
+		cluster:  w.cluster,
+		delegate: w.delegate.ClusterRoleBindings(),
+	}
+}
+
+type wrappedClusterRoleBinding struct {
+	cluster  string
+	delegate rbac.ClusterRoleBindingInterface
+}
+
+func (w *wrappedInterface) RbacV1() rbacv1.RbacV1Interface {
+	return &wrappedRbacV1{
+		cluster:  w.cluster,
+		delegate: w.delegate.RbacV1(),
+	}
+}
+
+func (w *wrappedClusterRoleBinding) checkCluster(ctx context.Context) (context.Context, error) {
+	ctxCluster, ok := kcp.ClusterFromContext(ctx)
+	if !ok {
+		return kcp.WithCluster(ctx, w.cluster), nil
+	} else if ctxCluster != w.cluster {
+		return ctx, fmt.Errorf("cluster mismatch: context=%q, client=%q", ctxCluster, w.cluster)
+	}
+	return ctx, nil
+}
+
+func (w *wrappedClusterRoleBinding) Create(ctx context.Context, clusterRoleBinding *rbacapiv1.ClusterRoleBinding, opts metav1.CreateOptions) (*rbacapiv1.ClusterRoleBinding, error) {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Create(ctx, clusterRoleBinding}, opts)
+}
+
+func (w *wrappedClusterRoleBinding) Update(ctx context.Context, clusterRoleBinding} *rbacapiv1.ClusterRoleBinding, opts metav1.UpdateOptions) (*rbacapiv1.ClusterRoleBinding, error) {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Update(ctx, clusterRoleBinding}, opts)
+}
+
+func (w *wrappedClusterRoleBinding) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Delete(ctx, name, opts)
+}
+
+func (w *wrappedClusterRoleBinding) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Delete(ctx, opts, listOpts)
+}
+
+func (w *wrappedClusterRoleBinding) Get(ctx context.Context, name string, opts metav1.GetOptions) (*rbacapiv1.ClusterRoleBinding, error) {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Get(ctx, opts, listOpts)
+}
+
+func (w *wrappedClusterRoleBinding) List(ctx context.Context, opts metav1.ListOptions) (*rbacapiv1.ClusterRoleBindingList, error) {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.List(ctx, opts)
+}
+
+func (w *wrappedClusterRoleBinding) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	ctx, err := w.checkCluster(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return w.delegate.Watch(ctx, opts)
+}
+
+func (w *wrappedClusterRoleBinding) Patch(ctx context.Context, name string, pt apiTypes.PatchapiType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *rbacapiv1.ClusterRoleBinding, err error) {
 	ctx, err := w.checkCluster(ctx)
 	if err != nil {
 		return nil, err
