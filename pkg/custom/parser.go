@@ -5,6 +5,7 @@ import (
 	"go/types"
 	"io"
 	"strings"
+	"text/template"
 
 	"sigs.k8s.io/controller-tools/pkg/loader"
 	"sigs.k8s.io/controller-tools/pkg/markers"
@@ -39,26 +40,111 @@ type configMethodWriter struct {
 	*codeWriter
 }
 
-func (c *configMethodWriter) GenerateConfigMethod(root *loader.Package, info *markers.TypeInfo) {
+type api struct {
+	Name    string
+	Version string
+	PkgName string
+
+	PkgNameUpperFirst string
+	VersionUpperFirst string
+	NameLowerFirst    string
+}
+
+// TODO: move this to internal, so the exported fields are not accessible to users.
+// Need to export them for executing as template
+type packages struct {
+	Name              string
+	APIPath           string
+	ClientPath        string
+	Api               *api
+	NameUpperFirst    string
+	VersionUpperFirst string
+	Version           string
+	codeWriter        *codeWriter
+}
+
+func NewPackage(root *loader.Package, apiPath, clientPath, version, group string, cocodeWriter *codeWriter) error {
+	p := &packages{
+		Name:       group,
+		APIPath:    apiPath,
+		Version:    version,
+		ClientPath: clientPath,
+		codeWriter: cocodeWriter,
+	}
+}
+
+func NewAPI(root *loader.Package, info *markers.TypeInfo, apiPath, clientPath, version, group string, cocodeWriter *codeWriter) (*packages, error) {
 	typeInfo := root.TypesInfo.TypeOf(info.RawSpec.Name)
 	if typeInfo == types.Typ[types.Invalid] {
-		root.AddError(loader.ErrFromNode(fmt.Errorf("unknown type: %s", info.Name), info.RawSpec))
+		return nil, fmt.Errorf("unknown type: %s", info.Name)
 	}
 
-	// Flaky condition. We can remove it because of isEnabledMethod(), but keeping this as a double check.
-	if strings.HasSuffix(typeInfo.String(), "Status") || strings.HasSuffix(typeInfo.String(), "Spec") {
-		return
+	api := &api{
+		Name:    info.RawSpec.Name.Name,
+		Version: version,
+		PkgName: group,
 	}
 
-	c.Line("// DONOT EDIT!!")
-	c.Linef(newClientsetForConfigTemplate, (&namingInfo{typeInfo: typeInfo}).Syntax(root, c.importsList))
-
-	// Add the imports
-	importsList := []string{"k8s.io/client-go/kubernetes", "github.com/kcp-dev/kcp-client-wrappers/kcp", "k8s.io/client-go/rest"}
-	for _, imp := range importsList {
-		c.NeedImport(imp)
+	p := &packages{
+		Name:       group,
+		APIPath:    apiPath,
+		Version:    version,
+		ClientPath: clientPath,
+		Api:        api,
+		codeWriter: cocodeWriter,
 	}
 
+	p.setCased()
+	return p, nil
+
+}
+
+func (p *packages) writeMethods() error {
+	templ, err := template.New("wrapper").Parse(wrapperTempl)
+	if err != nil {
+		return err
+	}
+
+	err = templ.Execute(p.codeWriter.out, p)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *packages) setCased() {
+	p.NameUpperFirst = upperFirst(p.Name)
+	p.VersionUpperFirst = upperFirst(p.Version)
+	p.Api.setCased()
+}
+
+func (a *api) setCased() {
+	a.PkgNameUpperFirst = upperFirst(a.PkgName)
+	a.VersionUpperFirst = upperFirst(a.Version)
+	a.NameLowerFirst = lowerFirst(a.Name)
+}
+
+func (p *packages) writeCommonContent(out io.Writer) error {
+	templ, err := template.New("wrapper").Parse(commonTempl)
+	if err != nil {
+		return err
+	}
+
+	err = templ.Execute(p.codeWriter.out, p)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func lowerFirst(s string) string {
+	return strings.ToLower(string(s[0])) + s[1:]
+}
+
+func upperFirst(s string) string {
+	return strings.ToUpper(string(s[0])) + s[1:]
 }
 
 var newClientsetForConfigTemplate = `
@@ -85,5 +171,27 @@ func NewForConfig(c *rest.Config) (*ClusterClient, error) {
 		delegate: delegate,
 	}, nil
 
+}
+`
+
+var clusterClientDef = `
+type ClusterClient struct {
+	delegate kubernetes.Interface
+}
+`
+
+var clusterMethod = `
+func (c *ClusterClient) Cluster(cluster string) kubernetes.Interface {
+	return &wrappedInterface{
+		cluster:  cluster,
+		delegate: c.delegate,
+	}
+}
+`
+
+var wrappedInterface = `
+type wrappedInterface struct {
+	cluster  string
+	delegate kubernetes.Interface
 }
 `

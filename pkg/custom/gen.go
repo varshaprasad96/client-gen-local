@@ -8,46 +8,55 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
+	"github.com/varshaprasad96/client-gen/pkg/custom/flag"
+	"k8s.io/code-generator/cmd/client-gen/args"
+	"k8s.io/code-generator/cmd/client-gen/types"
 	"sigs.k8s.io/controller-tools/pkg/genall"
 	"sigs.k8s.io/controller-tools/pkg/loader"
 	"sigs.k8s.io/controller-tools/pkg/markers"
 )
 
 type Generator struct {
-	// Name - placeholder for now
-	Name string
+	// BaseImportPath refers to the base path of the package
+	inputDir string
+	// Output Dir
+	outputDir string
+	// ClienSetAPI path
+	clientSetAPIPath string
 }
 
-type result struct {
-	Group string
-	Type  string
-	Info  markers.TypeInfo
-}
+func (g *Generator) setdefualtsFromFlags(f flag.Flags) error {
+	if f.InputDir == "" {
+		return fmt.Errorf("currently generator does not run without input path to API definition")
+	}
+	g.inputDir = f.InputDir
 
-func (g Generator) Generate(ctx *genall.GenerationContext) error {
-	_, err := GenerateHelper(ctx)
-	if err != nil {
-		return err
+	if f.OutputDir != "" {
+		g.outputDir = f.OutputDir
 	}
 
-	// var output string
-	// for _, r := range res {
-	// 	output = output + fmt.Sprintf("Extracted values types: %s Groups: %s \n", r.Info.Name, r.Type)
-	// }
+	if f.ClientsetAPIPath == "" {
+		return fmt.Errorf("specifying client API path is required currently")
+	}
 
-	// for _, root := range ctx.Roots {
-	// 	err := writeOut(ctx, root, []byte(output))
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
+	g.clientSetAPIPath = f.ClientsetAPIPath
 	return nil
 }
 
-func GenerateHelper(ctx *genall.GenerationContext) ([]result, error) {
-	var out []result
+func (g Generator) Generate(ctx *genall.GenerationContext, f flag.Flags) error {
+	if err := g.setdefualtsFromFlags(f); err != nil {
+		return err
+	}
+
+	err := g.generateHelper(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g Generator) generateHelper(ctx *genall.GenerationContext) error {
 
 	for _, root := range ctx.Roots {
 		root.NeedTypesInfo()
@@ -64,38 +73,41 @@ func GenerateHelper(ctx *genall.GenerationContext) ([]result, error) {
 
 		if err := markers.EachType(ctx.Collector, root, func(info *markers.TypeInfo) {
 			outContent := new(bytes.Buffer)
-			r := result{
-				Info: *info,
-			}
-			out = append(out, r)
 
-			configCtx := &configMethodWriter{
-				importsList: imports,
-				pkg:         *root,
-				codeWriter:  &codeWriter{out: outContent},
+			group, err := getGroups(root, g.inputDir)
+			if err != nil {
+				fmt.Println(err.Error())
 			}
-
+			fmt.Println("******", group.Group, group.PackageName, group.Versions)
 			// if not enabled for this type, skip
 			if !isEnabledForMethod(info) {
 				return
 			}
 
-			configCtx.GenerateConfigMethod(root, info)
+			p, err := NewAPI(root, info, root.Package.PkgPath, g.clientSetAPIPath, string(group.Versions[0].Version), group.PackageName, &codeWriter{out: outContent})
+
+			// configCtx.GenerateConfigMethod(root, info)
+
+			err = p.writeMethods()
+			if err != nil {
+				fmt.Println(err.Error())
+			}
 
 			outBytes := outContent.Bytes()
 			if len(outBytes) > 0 {
 				byType[info.Name] = outBytes
 			}
 		}); err != nil {
-			return nil, err
+			return err
 		}
 
 		if len(byType) == 0 {
-			return nil, nil
+			return nil
 		}
 
 		outContent := new(bytes.Buffer)
 		writeHeader(root, outContent, root.Name, imports)
+		p.writeCommonContent(outContent)
 		writeMethods(root, outContent, byType)
 
 		outBytes := outContent.Bytes()
@@ -109,11 +121,28 @@ func GenerateHelper(ctx *genall.GenerationContext) ([]result, error) {
 
 		err = writeOut(ctx, root, outBytes)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
+	return nil
+}
 
-	return out, nil
+func getGroups(pkg *loader.Package, basePath string) (*types.GroupVersions, error) {
+	groups := []types.GroupVersions{}
+
+	// Using the builder from code-gen
+	builder := args.NewGroupVersionsBuilder(&groups)
+	_ = args.NewGVPackagesValue(builder, []string{pkg.PkgPath})
+
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("error finding the group version from import path %q", basePath)
+	}
+
+	if len(groups) > 1 {
+		return nil, fmt.Errorf("specifying multiple groups in the same package %q is not supported", basePath)
+	}
+
+	return &groups[0], nil
 }
 
 func writeMethods(pkg *loader.Package, out io.Writer, byType map[string][]byte) {
@@ -185,11 +214,7 @@ func writeHeader(pkg *loader.Package, out io.Writer, packageName string, imports
 
 package %[1]s
 
-import (
-%[2]s
-)
-
-`, packageName, strings.Join(imports.ImportSpecs(), "\n"))
+`, packageName+"\n")
 	if err != nil {
 		pkg.AddError(err)
 	}
