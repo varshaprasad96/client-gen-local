@@ -68,6 +68,7 @@ func (g Generator) generateHelper(ctx *genall.GenerationContext) error {
 			fmt.Println(err.Error())
 		}
 
+		// This will include the common methods which should be written only once
 		outCommonContent := new(bytes.Buffer)
 		pkgmg, err := NewPackage(root, root.Package.PkgPath, g.clientSetAPIPath, string(group.Versions[0].Version), group.PackageName, &codeWriter{out: outCommonContent})
 		if err != nil {
@@ -79,6 +80,7 @@ func (g Generator) generateHelper(ctx *genall.GenerationContext) error {
 			return err
 		}
 
+		// TODO impt: Propagate the error instead of just printing it
 		if err := markers.EachType(ctx.Collector, root, func(info *markers.TypeInfo) {
 			outContent := new(bytes.Buffer)
 
