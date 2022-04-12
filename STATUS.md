@@ -1,6 +1,7 @@
 Things TODO:
 
-- [ ] Rewrite output logic to write it in the location specified by output flag.
+- [X] Rewrite output logic to write it in the location specified by output flag.
+- [ ] Name output file or folder path with group or type.
 - [ ] Check if clienset API path will always be accepted by generator.
 - [ ] Test out edge cases.
 - [ ] Clean up code (move parser logic to internal).

@@ -125,7 +125,7 @@ func (g Generator) generateHelper(ctx *genall.GenerationContext) error {
 			outBytes = formattedBytes
 		}
 
-		err = writeOut(ctx, root, outBytes)
+		err = g.writeOut(ctx, root, outBytes)
 		if err != nil {
 			return err
 		}
@@ -176,17 +176,16 @@ func (g Generator) RegisterMarkers(into *markers.Registry) error {
 }
 
 // Wire in output rules instead of creating a file in here. Use pkg/genall/output.go
-func writeOut(ctx *genall.GenerationContext, root *loader.Package, outbytes []byte) error {
+func (g *Generator) writeOut(ctx *genall.GenerationContext, root *loader.Package, outbytes []byte) error {
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
+	path := filepath.Join(g.outputDir, "generated")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		os.MkdirAll(path, os.ModePerm)
 	}
 
-	path := filepath.Join(wd, "zz_generated_test.go")
-
-	outputFile, err := os.Create(path)
+	outputFile, err := os.Create(filepath.Join(path, "generated_client.go"))
 	if err != nil {
+		fmt.Println("here")
 		return err
 	}
 
