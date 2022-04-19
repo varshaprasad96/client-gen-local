@@ -2,51 +2,12 @@ package custom
 
 const commonTempl = `
 import (
+	"ctx"
 	{{.Name}}api{{.Version}} "{{.APIPath}}"
-	{{.Name}}{{.Version}} "{{.ClientPath}}"
+	{{.Name}}{{.Version}} "{{.ClientPath}}typed/{{.Name}}/{{.Version}}"
+
+	"github.com/kcp-dev/kcp-client-wrappers/kcp"
 )
-
-func NewForConfig(config *rest.Config) (*ClusterClient, error) {
-	client, err := rest.HTTPClientFor(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating HTTP client: %w", err)
-	}
-
-	clusterRoundTripper := kcp.NewClusterRoundTripper(client.Transport)
-	client.Transport = clusterRoundTripper
-
-	delegate, err := kubernetes.NewForConfigAndClient(config, client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating delegate clientset: %w", err)
-	}
-
-	return &ClusterClient{
-		delegate: delegate,
-	}, nil
-}
-
-type ClusterClient struct {
-	delegate kubernetes.Interface
-}
-
-func (c *ClusterClient) Cluster(cluster string) kubernetes.Interface {
-	return &wrappedInterface{
-		cluster:  cluster,
-		delegate: c.delegate,
-	}
-}
-
-type wrappedInterface struct {
-	cluster  string
-	delegate kubernetes.Interface
-}
-
-func (w *wrappedInterface) {{.NameUpperFirst}}{{.VersionUpperFirst}}() {{.Name}}{{.Version}}.{{.NameUpperFirst}}{{.VersionUpperFirst}}Interface {
-	return &wrapped{{.NameUpperFirst}}{{.VersionUpperFirst}}{
-		cluster:  w.cluster,
-		delegate: w.delegate.{{.NameUpperFirst}}{{.VersionUpperFirst}},
-	}
-}
 
 type wrapped{{.NameUpperFirst}}{{.VersionUpperFirst}} struct {
 	cluster  string
@@ -54,8 +15,17 @@ type wrapped{{.NameUpperFirst}}{{.VersionUpperFirst}} struct {
 }
 
 func (w *wrapped{{.NameUpperFirst}}{{.VersionUpperFirst}}) RESTClient() rest.Interface {
-	//TODO
-	panic("no")
+	return w.delegate.RESTClient()
+}
+
+func (w *wrapped{{.Name}}) checkCluster(ctx context.Context) (context.Context, error) {
+	ctxCluster, ok := kcp.ClusterFromContext(ctx)
+	if !ok {
+		return kcp.WithCluster(ctx, w.cluster), nil
+	} else if ctxCluster != w.cluster {
+		return ctx, fmt.Errorf("cluster mismatch: context=%q, client=%q", ctxCluster, w.cluster)
+	}
+	return ctx, nil
 }
 `
 
@@ -70,23 +40,6 @@ func (w *wrapped{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}) {{.Name}}s() {{.Pk
 type wrapped{{.Name}} struct {
 	cluster  string
 	delegate {{.PkgName}}.{{.Name}}Interface
-}
-
-func (w *wrappedInterface) {{.PkgNameUpperFirst}}{{.VersionUpperFirst}}() {{.PkgName}}{{.Version}}.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}Interface {
-	return &wrapped{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}{
-		cluster:  w.cluster,
-		delegate: w.delegate.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}(),
-	}
-}
-
-func (w *wrapped{{.Name}}) checkCluster(ctx context.Context) (context.Context, error) {
-	ctxCluster, ok := kcp.ClusterFromContext(ctx)
-	if !ok {
-		return kcp.WithCluster(ctx, w.cluster), nil
-	} else if ctxCluster != w.cluster {
-		return ctx, fmt.Errorf("cluster mismatch: context=%q, client=%q", ctxCluster, w.cluster)
-	}
-	return ctx, nil
 }
 
 func (w *wrapped{{.Name}}) Create(ctx context.Context, {{.NameLowerFirst}} *{{.PkgName}}api{{.Version}}.{{.Name}}, opts metav1.CreateOptions) (*{{.PkgName}}api{{.Version}}.{{.Name}}, error) {
@@ -153,3 +106,76 @@ func (w *wrapped{{.Name}}) Patch(ctx context.Context, name string, pt apiTypes.P
 	return w.delegate.Patch(ctx, name, pt, data, opts, subresources)
 }
 `
+const wrappedInterfacesTempl = `
+
+package generated
+
+import (
+	"github.com/kcp-dev/kcp-client-wrappers/kcp"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
+
+	{{$name := .InputPath}}
+	{{ range .APIs }}
+	{{.PkgName}}{{.Version}} "{{$name}}/pkg/apis/{{.PkgName}}/{{.Version}}"
+	{{ end }}
+)
+
+func NewForConfig(config *rest.Config) (*ClusterClient, error) {
+	client, err := rest.HTTPClientFor(config)
+	if err != nil {
+		return nil, fmt.Errorf("error creating HTTP client: %w", err)
+	}
+
+	clusterRoundTripper := kcp.NewClusterRoundTripper(client.Transport)
+	client.Transport = clusterRoundTripper
+
+	delegate, err := kubernetes.NewForConfigAndClient(config, client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating delegate clientset: %w", err)
+	}
+
+	return &ClusterClient{
+		delegate: delegate,
+	}, nil
+}
+
+type ClusterClient struct {
+	delegate {{.InterfaceName}}.Interface
+}
+
+func (c *ClusterClient) Cluster(cluster string) {{.InterfaceName}}.Interface {
+	return &wrappedInterface{
+		cluster:  cluster,
+		delegate: c.delegate,
+	}
+}
+
+type wrappedInterface struct {
+	cluster  string
+	delegate kubernetes.Interface
+}
+
+func (w *wrappedInterface) Discovery() discovery.DiscoveryInterface {
+	return w.delegate.Discovery()
+}
+
+{{ range .APIs }}
+func (w *wrappedInterface) {{.PkgNameUpperFirst}}{{.VersionUpperFirst}}() {{.PkgName}}{{.Version}}.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}Interface {
+	return &wrapped{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}{
+		cluster:  w.cluster,
+		delegate: w.delegate.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}(),
+	}
+}
+{{ end }}
+
+`
+
+// {{ range .APIs }}
+
+// func (w *wrappedInterface) {{.PkgNameUpperFirst}}{{.VersionUpperFirst}}() {{.Name}}{{.Version}}.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}Interface {
+// 	return &wrapped{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}{
+// 		cluster:  w.cluster,
+// 		delegate: w.delegate.{{.PkgNameUpperFirst}}{{.VersionUpperFirst}}(),
+// 	}
+// }

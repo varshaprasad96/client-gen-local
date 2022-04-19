@@ -7,6 +7,8 @@ import (
 	"strings"
 	"text/template"
 
+	gentype "k8s.io/code-generator/cmd/client-gen/types"
+
 	"sigs.k8s.io/controller-tools/pkg/loader"
 	"sigs.k8s.io/controller-tools/pkg/markers"
 )
@@ -24,14 +26,68 @@ type codeWriter struct {
 	out io.Writer
 }
 
-// Line writes a single line.
-func (c *codeWriter) Line(line string) {
-	fmt.Fprintln(c.out, line)
+type wrapperInterface struct {
+	InterfaceName string
+	InputPath     string
+	APIs          []Api
+	codeWriter    *codeWriter
 }
 
-// Linef writes a single line with formatting (as per fmt.Sprintf).
-func (c *codeWriter) Linef(line string, args ...interface{}) {
-	fmt.Fprintf(c.out, line+"\n", args...)
+func groupVersionToAPIs(gvs []gentype.GroupVersions) []Api {
+	result := make([]Api, 0)
+
+	for _, gv := range gvs {
+		if len(gv.Versions) <= 0 {
+			continue
+		}
+		a := &Api{
+			Name:    gv.Group.String(),
+			Version: string(gv.Versions[0].Version),
+			PkgName: gv.PackageName,
+		}
+		a.setCased()
+		result = append(result, *a)
+	}
+	return result
+}
+
+func NewWrappedInterface(interfaceName string, inputPath string, gvs []gentype.GroupVersions, cw *codeWriter) (*wrapperInterface, error) {
+	if len(gvs) == 0 {
+		return nil, fmt.Errorf("no group version pair is defined")
+	}
+
+	apis := groupVersionToAPIs(gvs)
+	return &wrapperInterface{
+		InputPath:     inputPath,
+		InterfaceName: interfaceName,
+		APIs:          apis,
+		codeWriter:    cw,
+	}, nil
+}
+
+func (w *wrapperInterface) writeMethods() error {
+	templ, err := template.New("wrapper").Parse(wrappedInterfacesTempl)
+	if err != nil {
+		return err
+	}
+
+	err = templ.Execute(w.codeWriter.out, w)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type Api struct {
+	Name       string
+	Version    string
+	PkgName    string
+	codeWriter *codeWriter
+
+	PkgNameUpperFirst string
+	VersionUpperFirst string
+	NameLowerFirst    string
 }
 
 type api struct {
@@ -107,6 +163,12 @@ func (a *api) writeMethods() error {
 }
 
 func (a *api) setCased() {
+	a.PkgNameUpperFirst = upperFirst(a.PkgName)
+	a.VersionUpperFirst = upperFirst(a.Version)
+	a.NameLowerFirst = lowerFirst(a.Name)
+}
+
+func (a *Api) setCased() {
 	a.PkgNameUpperFirst = upperFirst(a.PkgName)
 	a.VersionUpperFirst = upperFirst(a.Version)
 	a.NameLowerFirst = lowerFirst(a.Name)
